@@ -64,39 +64,92 @@ function hexToLuma(hex: string): number {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
-      }}
-      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-150 min-h-[32px]"
-      style={{
-        background: copied ? "var(--color-accent)" : "#2a2a2a",
-        color: copied ? "#f5f3ef" : "#a0a0a0",
-        border: "1px solid",
-        borderColor: copied ? "var(--color-accent)" : "#3a3a3a",
-        letterSpacing: "0.02em",
-      }}
-      aria-label="Copy CSS variables"
-    >
-      {copied ? "✓ Copied" : "Copy"}
-    </button>
-  );
+type ExportFormat = "css" | "scss" | "tailwind" | "wordpress" | "beaver" | "figma";
+
+const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
+  { id: "css",       label: "CSS" },
+  { id: "scss",      label: "SCSS" },
+  { id: "tailwind",  label: "Tailwind" },
+  { id: "wordpress", label: "WordPress" },
+  { id: "beaver",    label: "Beaver Builder" },
+  { id: "figma",     label: "Figma Tokens" },
+];
+
+function generateExport(format: ExportFormat, roles: Palette["roles"]): string {
+  const { background, surface, accent } = roles;
+  const bg  = background.hex;
+  const sur = surface.hex;
+  const acc = accent.hex;
+  const bgRaw  = bg.replace("#", "");
+  const surRaw = sur.replace("#", "");
+  const accRaw = acc.replace("#", "");
+
+  switch (format) {
+    case "css":
+      return `:root {\n  --color-bg:      ${bg};\n  --color-surface: ${sur};\n  --color-accent:  ${acc};\n}`;
+
+    case "scss":
+      return `$color-bg:      ${bg};\n$color-surface: ${sur};\n$color-accent:  ${acc};`;
+
+    case "tailwind":
+      return `// tailwind.config.js\nmodule.exports = {\n  theme: {\n    extend: {\n      colors: {\n        bg:      "${bg}",\n        surface: "${sur}",\n        accent:  "${acc}",\n      },\n    },\n  },\n};`;
+
+    case "wordpress":
+      return JSON.stringify({
+        version: 2,
+        settings: {
+          color: {
+            palette: [
+              { color: bg,  name: `Background — ${background.name}`, slug: "background" },
+              { color: sur, name: `Surface — ${surface.name}`,       slug: "surface" },
+              { color: acc, name: `Accent — ${accent.name}`,         slug: "accent" },
+            ],
+          },
+        },
+      }, null, 2);
+
+    case "beaver":
+      return `<?php\n// Add to your theme's functions.php\nadd_filter( 'fl_builder_color_presets', function( $colors ) {\n    return array_merge( [\n        "${bgRaw}",  // Background (60%) — ${background.name}\n        "${surRaw}", // Surface (30%) — ${surface.name}\n        "${accRaw}", // Accent (10%) — ${accent.name}\n    ], $colors );\n} );`;
+
+    case "figma":
+      return JSON.stringify({
+        "color/background": {
+          $value: bg,
+          $type: "color",
+          $description: `60% background — ${background.name}`,
+        },
+        "color/surface": {
+          $value: sur,
+          $type: "color",
+          $description: `30% surface — ${surface.name}`,
+        },
+        "color/accent": {
+          $value: acc,
+          $type: "color",
+          $description: `10% accent — ${accent.name}`,
+        },
+      }, null, 2);
+  }
 }
 
 function PaletteCard({ palette }: { palette: Palette }) {
   const { background, surface, accent } = palette.roles;
+  const [format, setFormat] = useState<ExportFormat>("css");
+  const code = generateExport(format, palette.roles);
+
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
 
   return (
     <article
       className="rounded-2xl overflow-hidden shadow-sm border"
       style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
     >
-      {/* Swatch preview bar — 60/30/10 proportions */}
+      {/* Swatch bar — 60/30/10 */}
       <div className="flex h-20" role="img" aria-label="Palette preview">
         <div className="flex-[6]" style={{ background: background.hex }} title={background.name} />
         <div className="flex-[3]" style={{ background: surface.hex }} title={surface.name} />
@@ -116,49 +169,71 @@ function PaletteCard({ palette }: { palette: Palette }) {
       <div className="px-6 py-4 flex gap-6 flex-wrap">
         {[
           { label: "60% Background", color: background },
-          { label: "30% Surface", color: surface },
-          { label: "10% Accent", color: accent },
-        ].map(({ label, color }) => {
-          const textColor = hexToLuma(color.hex) < 128 ? "#f5f3ef" : "#111111";
-          return (
-            <div key={label} className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl flex-shrink-0"
-                style={{ background: color.hex }}
-                aria-hidden="true"
-              />
-              <div>
-                <div className="text-xs font-semibold leading-none" style={{ color: "var(--color-text)" }}>
-                  {color.name}
-                </div>
-                <div className="text-xs font-mono mt-1" style={{ color: "var(--color-text-muted)" }}>
-                  {color.hex}
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                  {label}
-                </div>
-              </div>
+          { label: "30% Surface",    color: surface },
+          { label: "10% Accent",     color: accent },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl flex-shrink-0" style={{ background: color.hex }} aria-hidden="true" />
+            <div>
+              <div className="text-xs font-semibold leading-none" style={{ color: "var(--color-text)" }}>{color.name}</div>
+              <div className="text-xs font-mono mt-1" style={{ color: "var(--color-text-muted)" }}>{color.hex}</div>
+              <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{label}</div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
-      {/* CSS block */}
+      {/* Export block */}
       <div className="mx-6 mb-6 rounded-xl overflow-hidden border" style={{ borderColor: "var(--color-border)" }}>
+
+        {/* Tab strip */}
         <div
-          className="flex items-center justify-between px-4 py-2"
+          className="flex items-center overflow-x-auto"
           style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)" }}
+          role="tablist"
+          aria-label="Export format"
         >
-          <span className="text-xs font-mono" style={{ color: "var(--color-text-muted)" }}>
-            CSS variables
-          </span>
-          <CopyButton text={palette.css} />
+          {EXPORT_FORMATS.map((f) => {
+            const active = f.id === format;
+            return (
+              <button
+                key={f.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFormat(f.id)}
+                className="px-3 py-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-100 flex-shrink-0"
+                style={{
+                  color: active ? "var(--color-text)" : "var(--color-text-muted)",
+                  borderBottom: active ? "2px solid var(--color-accent)" : "2px solid transparent",
+                  background: "transparent",
+                }}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+          <div className="flex-1" />
+          <button
+            onClick={handleCopy}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg mx-2 my-1 transition-all duration-150 flex-shrink-0"
+            style={{
+              background: copied ? "var(--color-accent)" : "#2a2a2a",
+              color: copied ? "#f5f3ef" : "#a0a0a0",
+              border: "1px solid",
+              borderColor: copied ? "var(--color-accent)" : "#3a3a3a",
+            }}
+            aria-label={`Copy ${format} export`}
+          >
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
         </div>
+
+        {/* Code */}
         <pre
           className="px-4 py-4 text-xs font-mono overflow-x-auto"
-          style={{ background: "#111111", color: "#e8e0d4", lineHeight: "1.7" }}
+          style={{ background: "#111111", color: "#e8e0d4", lineHeight: "1.7", minHeight: "80px" }}
         >
-          {palette.css}
+          {code}
         </pre>
       </div>
     </article>
