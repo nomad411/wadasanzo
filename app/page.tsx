@@ -294,6 +294,17 @@ export default function Home() {
                   republished it as <em>A Dictionary of Color Combinations</em>. It has since become an
                   essential reference for designers worldwide.
                 </p>
+                <p>
+                  Browse all 348 combinations at the community reference:{" "}
+                  <a
+                    href="https://sanzo-wada.dmbk.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--color-accent)", textDecoration: "underline", textUnderlineOffset: "3px" }}
+                  >
+                    sanzo-wada.dmbk.io →
+                  </a>
+                </p>
               </div>
             </div>
 
